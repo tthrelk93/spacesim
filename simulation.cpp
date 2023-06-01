@@ -37,8 +37,8 @@ bool OctreeNode::fits(const Object3D& object) const {
     bool isSmallEnough = object.radius <= size;  // Adjust this fraction as needed
 
     if (debug) {
-        std::cout << "Checking if object at (" << object.position.x << ", " << object.position.y << ", " << object.position.z << ") with radius " << object.radius
-                  << " fits in node at (" << center.x << ", " << center.y << ", " << center.z << ") with size " << size << " fitsInNode: " << fitsInNode << ", " << " isSmallEnough: " << isSmallEnough << std::endl;
+        //std::cout << "Checking if object at (" << object.position.x << ", " << object.position.y << ", " << object.position.z << ") with radius " << object.radius
+                  //<< " fits in node at (" << center.x << ", " << center.y << ", " << center.z << ") with size " << size << " fitsInNode: " << fitsInNode << ", " << " isSmallEnough: " << isSmallEnough << std::endl;
     }
 
     return fitsInNode && isSmallEnough;
@@ -160,8 +160,8 @@ void Spacecraft::updateVelocity(double fx, double fy, double fz, double dt, QEla
     }
 }
 
-CelestialBody::CelestialBody(std::string name, double mass, double radius, double x, double y, double z, double vx, double vy, double vz, int objectType)
-    : name(name), mass(mass), radius(radius), x(x), y(y), z(z), vx(vx), vy(vy), vz(vz), objectType(objectType) {
+CelestialBody::CelestialBody(std::string name, double mass, double radius, double x, double y, double z, double vx, double vy, double vz, int objectType, double renderSize)
+    : name(name), mass(mass), radius(radius), x(x), y(y), z(z), vx(vx), vy(vy), vz(vz), objectType(objectType), renderSize(renderSize) {
 
 }
 
@@ -220,7 +220,7 @@ bool Universe::checkCollisions() {
 }
 
 void Universe::update(double dt, QElapsedTimer& debugTimer) {
-    double scaleFactor = 1.0e15;
+    double scaleFactor = 1;
 
     if(debug && debugTimer.elapsed() % 500 < 16){
         qDebug() << "";
@@ -262,6 +262,15 @@ void Universe::update(double dt, QElapsedTimer& debugTimer) {
         }
     }
 
+    for (CelestialBody &body : bodies) {
+        if (body.name == "Sun") {
+            body.x += body.vx * dt;
+            body.y += body.vy * dt;
+            body.z += body.vz * dt;
+            bodyMap[body.name] = body;
+            break;
+        }
+    }
     // Check for collisions
     if (checkCollisions() && debugTimer.elapsed() % 500 < 16){
         // If a collision is detected, print a message and exit the program

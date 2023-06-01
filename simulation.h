@@ -45,6 +45,7 @@ public:
     double radius;  // Add this line
     double x, y, z;  // Position
     double vx, vy, vz;  // Velocity
+    double renderSize;
 
     Spacecraft(double mass, double radius, double x, double y, double z, double vx, double vy, double vz);
     void updatePosition(double dt);
@@ -59,11 +60,12 @@ public:
     double x, y, z;
     double vx, vy, vz;
     int objectType = 0;
+    double renderSize;
     QQueue<QVector3D> pastPositions;  // Add this line
     CelestialBody()
-        : name(""), mass(0.0), radius(0.0), x(0.0), y(0.0), z(0.0), vx(0.0), vy(0.0), vz(0.0), objectType(0) {}
+        : name(""), mass(0.0), radius(0.0), x(0.0), y(0.0), z(0.0), vx(0.0), vy(0.0), vz(0.0), objectType(0), renderSize(0) {}
 
-    CelestialBody(std::string name, double mass, double radius, double x, double y, double z, double vx, double vy, double vz, int objectType);
+    CelestialBody(std::string name, double mass, double radius, double x, double y, double z, double vx, double vy, double vz, int objectType, double renderSize);
     void updatePosition(double dt);
     void updateVelocity(double fx, double fy, double fz, double dt);
 };

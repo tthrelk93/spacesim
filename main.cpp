@@ -17,6 +17,8 @@
 #include <string>
 #include <QPainter>
 #include <QString>
+#include <QLabel>
+#include <QCheckBox>
 #include <QListWidget>
 #include <QListWidgetItem>
 #include "simulation.h"
@@ -25,17 +27,22 @@ class MyOpenGLWindow : public QOpenGLWidget, protected QOpenGLFunctions {
 
 private:
     Universe universe;  // Your Universe object
-    float cameraX = 0;
-    float cameraY = 0;
-    float cameraZ = 5000.0f;  // Adjust this value as needed
 
+    float cameraRadius = 2000000000.0f;
+    float changeFocusCameraRadiusScale = 0.2f;
+    float sunRenderRadius = 1000000000.0f;
+    float earthRenderRadius = 9000000.0f;
+    float moonRenderRadius = 2400000.0f;
+    bool topDownView = false;
     bool mousePress = false;
     float angleX = 0.0f;
     float angleY = 0.0f;
     float angleZ = 0.0f;
     QPoint lastMousePos;
 
-    float scaleFactor = 1.0f;
+    float scaleFactor = 1.0;  // The scale factor you used to scale down the universe
+    // Create the Sun with solar apex motion
+
     // Constants for the Earth
     const double EARTH_MASS = 5.972e24;  // in kilograms
     const double EARTH_RADIUS = 6.371e6;  // in meters
@@ -53,102 +60,109 @@ private:
     CelestialBody selectedBody;
 
 public:
+    float cameraX = 0;
+    float cameraY = 0;
+    float cameraZ = 0;  // Adjust this value as needed
     QListWidget* listWidget;
     MyOpenGLWindow(QWidget *parent = nullptr)
         : QOpenGLWidget(parent) {
-listWidget = new QListWidget;
+        listWidget = new QListWidget;
         debugTimer.start();
         // Add some celestial bodies
-        scaleFactor = 1.0e15;  // The scale factor you used to scale down the universe
 
-        // Constants for the Sun
         const double SUN_MASS = 1.989e30;  // in kilograms
         const double SUN_RADIUS = 6.9634e8;  // in meters
         const double EARTH_SUN_DISTANCE = 1.496e11;  // in meters
+        const double SUN_VELOCITY_X = -9700.0;  // in meters per second (approximate value for solar apex motion)
+        const double SUN_VELOCITY_Y = 20000.0;  // in meters per second (approximate value for solar apex motion)
+        const double SUN_VELOCITY_Z = 7000.0;   // in meters per second (approximate value for solar apex motion)
 
-        // Create the Sun
-        CelestialBody sun("Sun", SUN_MASS, SUN_RADIUS / scaleFactor, 0, 0, 0, 0, 0, 0, 0);
-       // universe.bodyMap["Sun"] = sun;
+        // Scale the velocity components based on the scaleFactor
+        double scaledSunVelocityX = SUN_VELOCITY_X / scaleFactor;
+        double scaledSunVelocityY = SUN_VELOCITY_Y / scaleFactor;
+        double scaledSunVelocityZ = SUN_VELOCITY_Z / scaleFactor;
+
+        // Set the initial position of the Sun
+        double initialSunX = 0.0;  // Set the initial x-position of the Sun
+        double initialSunY = 0.0;  // Set the initial y-position of the Sun
+        double initialSunZ = 0.0;  // Set the initial z-position of the Sun
+
+        // Set the Sun's velocity and position
+        CelestialBody sun("Sun", SUN_MASS, SUN_RADIUS / scaleFactor,
+                          initialSunX, initialSunY, initialSunZ,
+                          scaledSunVelocityX, scaledSunVelocityY, scaledSunVelocityZ,
+                          0, sunRenderRadius
+                          );
         universe.addBody(sun);
-        selectedBody = sun;
+
+
 
         // Calculate the Earth's initial velocity around the Sun
+        double earth_velocity = std::sqrt(GRAVITATIONAL_CONSTANT * SUN_MASS / EARTH_SUN_DISTANCE);
 
-        double earth_position_scaled = EARTH_SUN_DISTANCE / scaleFactor;
-         double moon_position_scaled = (EARTH_MOON_DISTANCE + EARTH_SUN_DISTANCE) / scaleFactor;
-        // Calculate the Earth's initial velocity around the Sun
-         // Calculate the Earth's initial velocity around the Sun
-         double earth_velocity = std::sqrt(GRAVITATIONAL_CONSTANT * SUN_MASS / EARTH_SUN_DISTANCE);
+        // Set the Earth's velocity and position
+        CelestialBody earth("Earth", EARTH_MASS, EARTH_RADIUS / scaleFactor, EARTH_SUN_DISTANCE / scaleFactor, 0, 0, 0, earth_velocity / scaleFactor, 0, 1, earthRenderRadius);
+        universe.addBody(earth);
 
-         // Set the Earth's velocity and position
-         CelestialBody earth("Earth", EARTH_MASS, EARTH_RADIUS / scaleFactor, earth_position_scaled, 0, 0, 0, earth_velocity / scaleFactor, 0, 1);
-         universe.addBody(earth);
+        // Calculate the Moon's initial velocity around the Earth
+        double moon_velocity = std::sqrt(GRAVITATIONAL_CONSTANT * EARTH_MASS / EARTH_MOON_DISTANCE);
 
-         // Calculate the Moon's initial velocity around the Earth
-         double moon_velocity = std::sqrt(GRAVITATIONAL_CONSTANT * EARTH_MASS / EARTH_MOON_DISTANCE);
+        // The Moon's total velocity is the sum of its velocity around the Earth and the Earth's velocity around the Sun
+        double moon_total_velocity = moon_velocity+earth_velocity;
 
-         // The Moon's total velocity is the sum of its velocity around the Earth and the Earth's velocity around the Sun
-         double moon_total_velocity = moon_velocity /*+ earth_velocity*/;
+        // Set the Moon's velocity and position
+        CelestialBody moon("Moon", MOON_MASS, MOON_RADIUS / scaleFactor, (EARTH_MOON_DISTANCE + EARTH_SUN_DISTANCE) / scaleFactor, 0, 0, 0, moon_total_velocity / scaleFactor, 0, 2, moonRenderRadius);
+        universe.addBody(moon);
 
-         // Set the Moon's velocity and position
-         CelestialBody moon("Moon", MOON_MASS, MOON_RADIUS / scaleFactor, moon_position_scaled, 0, 0, 0, moon_total_velocity / scaleFactor, 0, 2);
-         universe.addBody(moon);
+//        // Calculate the distance from the center of the Earth
+//        double distance = EARTH_RADIUS + LOW_EARTH_ORBIT_ALTITUDE;
 
+//        // Scale down the distance
+//        double distance_scaled = distance / scaleFactor;
 
-        // Calculate the distance from the center of the Earth
-        double distance = EARTH_RADIUS + LOW_EARTH_ORBIT_ALTITUDE;
+//        // Calculate the initial position of the spacecraft (in low Earth orbit)
+//        double initial_position = EARTH_RADIUS + LOW_EARTH_ORBIT_ALTITUDE;
 
-        // Scale down the distance
-        double distance_scaled = distance / scaleFactor;
+//        // Add an offset to the initial position
+//        double offset = 2.0e8;  // Adjust this value as needed
+//        initial_position += offset;
+//        double initial_position_scaled = initial_position / scaleFactor;
+//        // Calculate the gravitational force from the Earth
+//        double force_earth = GRAVITATIONAL_CONSTANT * EARTH_MASS / std::pow(initial_position_scaled, 2);
+//        double velocity = std::sqrt(force_earth * initial_position_scaled); //todo use init pos or scaled pos
+//        double velocity_scaled = velocity / scaleFactor;
+//        double dx = initial_position_scaled - earth.x;
+//        double dy = 0 - earth.y;  // Assuming the Earth's y-coordinate is 0
 
-        // Calculate the initial position of the spacecraft (in low Earth orbit)
-        double initial_position = EARTH_RADIUS + LOW_EARTH_ORBIT_ALTITUDE;
+//        // Get a vector that's orthogonal to the displacement vector
+//        double vx = dy;
+//        double vy = -dx;
 
-        // Add an offset to the initial position
-        double offset = 2.0e8;  // Adjust this value as needed
-        initial_position += offset;
+//        // Normalize the velocity vector (make it have a length of 1)
+//        double length = std::sqrt(vx*vx + vy*vy);
+//        vx /= length;
+//        vy /= length;
 
-        double initial_position_scaled = initial_position / scaleFactor;
-
-        // Calculate the gravitational force from the Earth
-        double force_earth = GRAVITATIONAL_CONSTANT * EARTH_MASS / std::pow(initial_position_scaled, 2);
-
-        double velocity = std::sqrt(force_earth * initial_position_scaled); //todo use init pos or scaled pos
-
-        double velocity_scaled = velocity / scaleFactor;
-
-        double dx = initial_position_scaled - earth.x;
-        double dy = 0 - earth.y;  // Assuming the Earth's y-coordinate is 0
-
-
-        // Get a vector that's orthogonal to the displacement vector
-        double vx = dy;
-        double vy = -dx;
-
-        // Normalize the velocity vector (make it have a length of 1)
-        double length = std::sqrt(vx*vx + vy*vy);
-        vx /= length;
-        vy /= length;
-
-        // Scale the velocity vector by the calculated velocity
-        vx *= velocity_scaled;
-        vy *= velocity_scaled;
+//        // Scale the velocity vector by the calculated velocity
+//        vx *= velocity_scaled;
+//        vy *= velocity_scaled;
 
         // Set the spacecraft's velocity
         //Spacecraft spacecraft(1000, 1, initial_position_scaled, 0, 0, vx, vy, 0);
         //universe.addSpacecraft(Spacecraft(1000, 0.5, initial_position_scaled, 0, 0, vx, vy, 0));
 
         if(debug){
-            qDebug() << "spacecraft starting Distance (scaled):" << distance_scaled;
-            qDebug() << "spacecraft starting vx, vy: " << vx << ", " << vy;
-            qDebug() << "spacecraft starting Initial position:" << initial_position;
+//            qDebug() << "spacecraft starting Distance (scaled):" << distance_scaled;
+//            qDebug() << "spacecraft starting vx, vy: " << vx << ", " << vy;
+//            qDebug() << "spacecraft starting Initial position:" << initial_position;
             qDebug() << "all objects Initial positions:" << sun.x << earth.x << moon.x;
+            qDebug() << "all objects Initial v:" << sun.vx << earth.vx << moon.vx;
+
         }
         // Add the spacecraft to the universe
         //universe.addSpacecraft(spacecraft);
 
     }
-
 
 protected:
 
@@ -162,7 +176,7 @@ protected:
         glClearColor(0.0f, 0.0f, 0.0f, 1.0f);  // Change to a gray color
 
         // Generate sphere vertices
-        std::vector<GLfloat> sphereVertices = generateSphereVertices(1.0f, 16, 32);
+        std::vector<GLfloat> sphereVertices = generateSphereVertices(1.0f, 64, 32);
 
         // Create a vertex buffer object (VBO)
         GLuint vbo;
@@ -179,14 +193,7 @@ protected:
         // Set up the model-view matrix
         glMatrixMode(GL_MODELVIEW);
         glLoadIdentity();
-
-        CelestialBody& sun = universe.bodyMap["Sun"];
-
-        gluLookAt(cameraX, cameraY, cameraZ,  // Camera position
-                  sun.x, sun.y, sun.z,  // Look-at point (average position)
-                  0.0, 0.0, 1.0); // Up vector
-
-
+        updateCameraPosition();
     }
 
     void wheelEvent(QWheelEvent *event) override {
@@ -195,15 +202,39 @@ protected:
         // Convert degrees to steps (a full step is 15 degrees)
         float steps = degrees / 15.0f;
         // Adjust the camera radius based on the number of steps
-        cameraZ -= steps * 2000.0f;  // Adjust the factor as needed
+        cameraRadius -= steps * 100.0f;  // Adjust the factor as needed
         // Ensure the radius stays within a certain range
-        cameraZ = std::max(1000.0f, std::min(1000000.0f, cameraZ));  // Adjust the range as needed
+        cameraRadius = std::max(5.0f, std::min(10000000000000.0f, cameraRadius));  // Adjust the range as needed
+        updateCameraPosition(); // Update the camera position
     }
-
 
     void mousePressEvent(QMouseEvent *event) override {
         if (event->button() == Qt::LeftButton) {
             mousePress = true;
+            lastMousePos = event->pos();
+        }
+    }
+
+    void mouseMoveEvent(QMouseEvent* event) override {
+        if (mousePress) {
+            QPoint delta = event->pos() - lastMousePos;
+            angleX += delta.x() * 0.05f;
+            angleY += delta.y() * 0.05f;
+            angleY = std::max(-89.9f, std::min(89.9f, angleY));
+
+            // Calculate the new camera position
+            float cameraX = selectedBody.x + cameraRadius * std::cos(angleX * M_PI / 180.0f) * std::cos(angleY * M_PI / 180.0f);
+            float cameraY = selectedBody.y + cameraRadius * std::sin(angleY * M_PI / 180.0f);
+            float cameraZ = selectedBody.z + cameraRadius * std::sin(angleX * M_PI / 180.0f) * std::cos(angleY * M_PI / 180.0f);
+
+            // Update the camera position
+            this->cameraX = cameraX;
+            this->cameraY = cameraY;
+            this->cameraZ = cameraZ;
+
+            // Request a redraw of the scene
+            update();
+
             lastMousePos = event->pos();
         }
     }
@@ -213,17 +244,6 @@ protected:
             mousePress = false;
         }
     }
-
-    void mouseMoveEvent(QMouseEvent *event) override {
-        if (mousePress) {
-            QPoint delta = event->pos() - lastMousePos;
-            angleX += delta.x();
-            angleY += delta.y();
-
-            lastMousePos = event->pos();
-        }
-    }
-
 
     double calculateMaxDistance() {
         double maxDistance = 0.0;
@@ -264,65 +284,98 @@ protected:
         return vertices;
     }
 
+    void updateCameraPosition() {
+
+
+        float cameraX = selectedBody.x * scaleFactor + cameraRadius * std::cos(angleX * M_PI / 180.0f) * std::cos(angleY * M_PI / 180.0f);
+        float cameraY = selectedBody.y * scaleFactor + cameraRadius * std::sin(angleY * M_PI / 180.0f);
+        float cameraZ = selectedBody.z* scaleFactor + cameraRadius * std::sin(angleX * M_PI / 180.0f) * std::cos(angleY * M_PI / 180.0f);
+        this->cameraX = cameraX ;
+        this->cameraY = cameraY;
+        this->cameraZ = cameraZ;
+
+        update(); // Request a redraw of the scene
+    }
+
+
+    // Calculate the distance of a celestial body from the camera
+    double distanceToCamera(const CelestialBody& body) {
+        double dx = body.x * scaleFactor - cameraX;
+        double dy = body.y * scaleFactor - cameraY;
+        double dz = body.z * scaleFactor - cameraZ;
+        return std::sqrt(dx * dx + dy * dy + dz * dz);
+    }
 
     void paintGL() override {
-        QPainter painter(this);
-
         // Clear the screen
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-        // Set up the projection matrix
-        glMatrixMode(GL_PROJECTION);
-        glLoadIdentity();
-        double fovy = 90.0;  // Field of view angle, in degrees, in the y direction
-        double aspect = (double)this->width() / (double)this->height();  // Aspect ratio (width to height)
-        double zNear = 0.01;  // Distance to near clipping plane
-        double zFar = 10000000000000.0;  // Distance to far clipping plane
+        if (topDownView) {
 
-        gluPerspective(fovy, aspect, zNear, zFar);
+            cameraX = universe.bodyMap["Sun"].x * scaleFactor;
+            cameraY = universe.bodyMap["Sun"].y * scaleFactor;
+            // Set up the projection matrix for top-down view
+            glMatrixMode(GL_PROJECTION);
+            glLoadIdentity();
+            double left = -9000000000.0;
+            double right = 9000000000.0;
+            double bottom = -9000000000.0;
+            double top = 9000000000.0;
+            double zNear = 0.1;  // Distance to near clipping plane
+            double zFar = 1000000000000000000000.0;;  // Distance to far clipping plane
+            glOrtho(left, right, bottom, top, zNear, zFar);
 
-        // Set up the model-view matrix
-        glMatrixMode(GL_MODELVIEW);
-        glLoadIdentity();
+            // Set up the model-view matrix for top-down view
+            glMatrixMode(GL_MODELVIEW);
+            glLoadIdentity();
+            gluLookAt(cameraX, cameraY, 1000000000.0,  // Set the camera position above the solar system
+                      cameraX, cameraY, 0.0,        // Look at the center of the solar system
+                      0.0, 1.0, 0.0);
+        } else {
+            // Set up the projection matrix
+            glMatrixMode(GL_PROJECTION);
+            glLoadIdentity();
+            double fovy = 90.0;  // Field of view angle, in degrees, in the y direction
+            double aspect = (double)this->width() / (double)this->height();  // Aspect ratio (width to height)
+            double zNear = 0.1;  // Distance to near clipping plane
+            double zFar = 100000000000000000000.0;  // Distance to far clipping plane
+
+            gluPerspective(fovy, aspect, zNear, zFar);
+
+            // Set up the model-view matrix
+            glMatrixMode(GL_MODELVIEW);
+            glLoadIdentity();
+
+            gluLookAt(cameraX, cameraY, cameraZ, selectedBody.x, selectedBody.y, selectedBody.z, 0.0f, 1.0f, 0.0f);
+            updateCameraPosition();
+        }
 
 
-        float dx = selectedBody.x - cameraX;
-        float dy = selectedBody.y - cameraY;
-        float dz = selectedBody.z - cameraZ;
+        // Sort the celestial bodies based on their distance to the camera
+        std::vector<CelestialBody> sortedBodies = universe.bodies;
+        std::sort(sortedBodies.begin(), sortedBodies.end(), [this](const CelestialBody& a, const CelestialBody& b) {
+            return distanceToCamera(a) > distanceToCamera(b);
+        });
 
-        // The up vector will be a rotation of 90 degrees around the y-axis
-        float upVectorX = dz;
-        float upVectorY = dy;
-        float upVectorZ = dx;
-
-        gluLookAt(cameraX, cameraY, cameraZ,  // Camera position
-                  selectedBody.x, selectedBody.y, selectedBody.z,  // Look-at point
-                  upVectorX, upVectorY, upVectorZ); // Up vector
-
-
-         glRotatef(angleX, 0.0f, 1.0f, 0.0f);
-         glRotatef(angleY, 1.0f, 0.0f, 0.0f);
-
-        // Draw celestial bodies and spacecrafts
-
-        for (const CelestialBody& body : universe.bodies) {
+        // Draw the celestial bodies and spacecrafts
+        for (const CelestialBody& body : sortedBodies) {
             glPushMatrix();
             glTranslatef(body.x * scaleFactor, body.y * scaleFactor, body.z * scaleFactor);
-            if(body.objectType == 0){
-                glColor3f(1.0f, 1.0f, 0.0f);  // Set the color to red
-            } else if(body.objectType == 1) {
-                glColor3f(0.0f, 0.0f, 1.0f);  // Set the color to red
-            } else if(body.objectType == 2){
-                 glColor3f(1.0f, 1.0f, 1.0f);  // Set the color to red
+            if (body.objectType == 0) {
+                glColor3f(1.0f, 1.0f, 0.0f);  // Set the color to yellow for the sun
+            } else if (body.objectType == 1) {
+                glColor3f(0.0f, 0.0f, 1.0f);  // Set the color to blue for planets
+            } else if (body.objectType == 2) {
+                glColor3f(1.0f, 1.0f, 1.0f);  // Set the color to white for moons
             }
             drawSphere(body.radius * scaleFactor, 20, 20, body.objectType);  // Pass the radius of the celestial body
             glPopMatrix();
             glBegin(GL_LINE_STRIP);
             float alpha = 1.0f;  // Start with full opacity
             for (const QVector3D& pastPosition : body.pastPositions) {
-                 glColor4f(1.0f, 1.0f, 1.0f, alpha);  // White color with alpha opacity
-                 glVertex3f(pastPosition.x() * scaleFactor, pastPosition.y() * scaleFactor, pastPosition.z() * scaleFactor);
-                 //alpha *= 0.95f;  // Decrease the opacity for the next segment
+                glColor4f(1.0f, 1.0f, 1.0f, alpha);  // White color with alpha opacity
+                glVertex3f(pastPosition.x() * scaleFactor, pastPosition.y() * scaleFactor, pastPosition.z() * scaleFactor);
+                alpha *= 0.95f;  // Decrease the opacity for the next segment
             }
             glEnd();
         }
@@ -330,26 +383,20 @@ protected:
         for (const Spacecraft& craft : universe.spacecrafts) {
             glPushMatrix();
             glTranslatef(craft.x * scaleFactor, craft.y * scaleFactor, craft.z * scaleFactor);
-            glColor3f(0.0f, 1.0f, 0.0f);  // Set the color to green
-            drawSphere(0.01 * scaleFactor, 20, 20, 3);  // Use a small constant value for the spacecraft size
+            glColor3f(1.0f, 0.0f, 0.0f);  // Set the color to red for spacecrafts
+            drawSphere(0.001, 10, 10, 3);  // Use a small constant value for the spacecraft size
             glPopMatrix();
         }
-
-
-
-
-        // End using QPainter
-        painter.end();
     }
 
     void drawSphere(double r, int lats, int longs, int objectType) {
         double visibleRadius = 0;
         if(objectType == 0){
-            visibleRadius = 2000; //std::max(r, 0.1 * scaleFactor);  // Use a minimum radius for visibility
+            visibleRadius = sunRenderRadius; //std::max(r, 0.1 * scaleFactor);  // Use a minimum radius for visibility
         } else if(objectType == 1) {
-           visibleRadius = 18.3; //std::max(r, 0.1 * scaleFactor);  // Use a minimum radius for visibility
+           visibleRadius = earthRenderRadius; //std::max(r, 0.1 * scaleFactor);  // Use a minimum radius for visibility
         } else if (objectType == 2){
-           visibleRadius = 4.98;
+           visibleRadius = moonRenderRadius;;
         } else {
            visibleRadius = 1; //change this to a realistic value for a craft
         }
@@ -395,24 +442,15 @@ protected:
 
         gluPerspective(fovy, aspect, zNear, zFar);
 
-        // Calculate average position of all celestial bodies
-        float dx = selectedBody.x - cameraX;
-        float dy = selectedBody.y - cameraY;
-        float dz = selectedBody.z - cameraZ;
-
-        // The up vector will be a rotation of 90 degrees around the y-axis
-        float upVectorX = -dz;
-        float upVectorY = 0.0f;
-        float upVectorZ = dx;
-
-        gluLookAt(cameraX, cameraY, cameraZ,  // Camera position
-                  selectedBody.x, selectedBody.y, selectedBody.z,  // Look-at point
-                  upVectorX, upVectorY, upVectorZ); // Up vector
+         updateCameraPosition();
     }
 
-
-
 public slots:
+    void toggleTopDownView(int state) {
+         topDownView = (state == Qt::Checked);
+         updateCameraPosition();
+         update();
+    }
     void changeFocus(QListWidgetItem* current, QListWidgetItem* previous) {
         // Extract the body name from the item text
         if (current) {
@@ -422,6 +460,13 @@ public slots:
             if (universe.bodyMap.count(bodyName.toStdString()) > 0) {
 
                 selectedBody = universe.bodyMap[bodyName.toStdString()];
+                if(bodyName.toStdString() == "Sun"){
+                    cameraRadius = selectedBody.renderSize / changeFocusCameraRadiusScale;
+                } else if(bodyName.toStdString() == "Earth"){
+                   cameraRadius = selectedBody.renderSize / changeFocusCameraRadiusScale;
+                } else if(bodyName.toStdString() == "Earth"){
+                    cameraRadius = selectedBody.renderSize / changeFocusCameraRadiusScale;
+                }
             }
         }
     }
@@ -429,12 +474,20 @@ public slots:
     void adjustTimeScale(int value) {
         // Adjust the time scale based on the slider value
         // This is just an example; you'll need to replace this with your own logic
-        timeScale = static_cast<double>(value) / 0.00005;
+        timeScale = static_cast<double>(value) / 0.0005;
     }
 
     void updateUniverse() {
+//        if (topDownView) {
+//            // Update the position of the sun in the top-down view
+
+
+//            // Calculate the camera position to follow the sun
+//            cameraX = universe.bodyMap["Sun"].x * scaleFactor;
+//            cameraY = universe.bodyMap["Sun"].y * scaleFactor;
+//        }
         // Update your universe here
-        universe.update(timeScale/1200.0,debugTimer); // Assuming 60 frames per second
+        universe.update(timeScale/12000.0,debugTimer); // Assuming 60 frames per second
 
         // Calculate the scale factor
         double maxDistance = 0.0;
@@ -475,6 +528,7 @@ public slots:
                 body.pastPositions.pop_back();  // Remove the oldest position
             }
         }
+
         // Redraw the scene
         update();
     }
@@ -495,9 +549,15 @@ int main(int argc, char* argv[]) {
 
     // Create the QSlider
     QSlider* timeSlider = new QSlider(Qt::Horizontal);
-    timeSlider->setRange(1, 500);  // Adjust the range as needed
+    timeSlider->setRange(1, 5000);  // Adjust the range as needed
     timeSlider->setValue(1);
 
+    // Create the QCheckBox for toggle switch
+    QCheckBox* topDownCheckBox = new QCheckBox("Top-Down View");
+    layout->addWidget(topDownCheckBox, 3, 1, 1, 1);
+
+    // Connect the stateChanged signal of the QCheckBox to the toggleTopDownView slot
+    QObject::connect(topDownCheckBox, &QCheckBox::stateChanged, openglWindow, &MyOpenGLWindow::toggleTopDownView);
 
     openglWindow->listWidget->setFixedSize(600, 200);  // Adjust the width and height as needed
 
@@ -509,10 +569,14 @@ int main(int argc, char* argv[]) {
 
     // Add the QListWidget to the layout in the top right corner
     layout->addWidget(openglWindow->listWidget, 0, 1, 1, 1);
-    openglWindow->listWidget->setFixedSize(600, 200);  // Adjust the width and height as needed
+    openglWindow->listWidget->setFixedSize(600, 70);  // Adjust the width and height as needed
     // Check if the signal is being emitted
     QObject::connect(openglWindow->listWidget, &QListWidget::currentItemChanged, openglWindow, &MyOpenGLWindow::changeFocus);
 
+    // Create a QLabel to display the camera coordinates
+    QLabel* cameraLabel = new QLabel(&window);
+    layout->addWidget(cameraLabel, 0, 0, 1, 1);
+    cameraLabel->setAlignment(Qt::AlignTop | Qt::AlignLeft);
 
     // Connect the QSlider's valueChanged signal to a slot in MyOpenGLWindow
     // You'll need to add a slot named adjustTimeScale to MyOpenGLWindow for this to work
@@ -525,6 +589,17 @@ int main(int argc, char* argv[]) {
     QTimer timer;
     QObject::connect(&timer, &QTimer::timeout, openglWindow, &MyOpenGLWindow::updateUniverse);
     timer.start(16);  // 60 frames per second
+
+    // Set up a timer to update the camera coordinates label every 200 milliseconds
+    QTimer cameraTimer;
+    QObject::connect(&cameraTimer, &QTimer::timeout, [&openglWindow, &cameraLabel]() {
+        QString cameraText = QString("Camera Position: (%1, %2, %3)")
+                                 .arg(openglWindow->cameraX)
+                                 .arg(openglWindow->cameraY)
+                                 .arg(openglWindow->cameraZ);
+        cameraLabel->setText(cameraText);
+    });
+    cameraTimer.start(200);  // Update every 200 milliseconds
 
     return app.exec();
 }
