@@ -5,8 +5,10 @@
 #include <cmath>
 #include <QTimer>
 #include <QElapsedTimer>
-
-
+#include <unordered_map>
+#include <string>
+#include <QQueue>
+#include <QVector3D>
 // Gravitational constant
 const double G = 6.67430e-11;
 
@@ -51,12 +53,17 @@ public:
 
 class CelestialBody {
 public:
+     std::string name; // Add this line
     double mass;
     double radius;
     double x, y, z;
     double vx, vy, vz;
+    int objectType = 0;
+    QQueue<QVector3D> pastPositions;  // Add this line
+    CelestialBody()
+        : name(""), mass(0.0), radius(0.0), x(0.0), y(0.0), z(0.0), vx(0.0), vy(0.0), vz(0.0), objectType(0) {}
 
-    CelestialBody(double mass, double radius, double x, double y, double z, double vx, double vy, double vz);
+    CelestialBody(std::string name, double mass, double radius, double x, double y, double z, double vx, double vy, double vz, int objectType);
     void updatePosition(double dt);
     void updateVelocity(double fx, double fy, double fz, double dt);
 };
@@ -67,6 +74,7 @@ public:
     std::vector<Spacecraft> spacecrafts;
     std::vector<CelestialBody> bodies;
     OctreeNode octree;  // The universe as an Octree
+     std::unordered_map<std::string, CelestialBody> bodyMap;  // Hash map for celestial bodies
 
     Universe();
     void addSpacecraft(const Spacecraft &s);

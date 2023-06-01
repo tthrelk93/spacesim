@@ -5,6 +5,8 @@
 #include <iostream>
 #include <QTimer>
 #include <QElapsedTimer>
+#include <unordered_map>
+#include <string>
 
 const bool debug = true;
 OctreeNode::OctreeNode(const Point3D& center, double size)
@@ -99,7 +101,7 @@ void OctreeNode::subdivide() {
 bool OctreeNode::checkCollisions() const {
     // If there are multiple objects in this node, check for collision
     if (objects.size() > 1) {
-        std::cout << "Checking collisions in node at (" << center.x << ", " << center.y << ", " << center.z << ") with " << objects.size() << " objects" << std::endl;
+      //  std::cout << "Checking collisions in node at (" << center.x << ", " << center.y << ", " << center.z << ") with " << objects.size() << " objects" << std::endl;
         for (int i = 0; i < objects.size(); i++) {
             for (int j = i + 1; j < objects.size(); j++) {
                 double dx = objects[i].position.x - objects[j].position.x;
@@ -108,7 +110,7 @@ bool OctreeNode::checkCollisions() const {
                 double distance = std::sqrt(dx*dx + dy*dy + dz*dz);
                 if (distance < objects[i].radius + objects[j].radius) {
                     // The objects are closer than the sum of their radii - collision!
-                    std::cout << "Collision detected between objects at (" << objects[i].position.x << ", " << objects[i].position.y << ", " << objects[i].position.z << ") and (" << objects[j].position.x << ", " << objects[j].position.y << ", " << objects[j].position.z << ")" << std::endl;
+                  //  std::cout << "Collision detected between objects at (" << objects[i].position.x << ", " << objects[i].position.y << ", " << objects[i].position.z << ") and (" << objects[j].position.x << ", " << objects[j].position.y << ", " << objects[j].position.z << ")" << std::endl;
                     return true;
                 }
             }
@@ -117,13 +119,13 @@ bool OctreeNode::checkCollisions() const {
 
     // If there's a single object in this node, but it doesn't fit, there's a collision
     if (objects.size() == 1 && !fits(objects[0])) {
-        std::cout << "Single object in node at (" << center.x << ", " << center.y << ", " << center.z << ") does not fit" << std::endl;
+       // std::cout << "Single object in node at (" << center.x << ", " << center.y << ", " << center.z << ") does not fit" << std::endl;
         return true;
     }
 
     // If there are no objects in this node, but there are children, check them for collisions
     if (children[0] != nullptr) {
-        std::cout << "Checking collisions in children of node at (" << center.x << ", " << center.y << ", " << center.z << ")" << std::endl;
+       // std::cout << "Checking collisions in children of node at (" << center.x << ", " << center.y << ", " << center.z << ")" << std::endl;
         for (int i = 0; i < 8; ++i) {
             if (children[i]->checkCollisions()) {
                 return true;
@@ -158,8 +160,8 @@ void Spacecraft::updateVelocity(double fx, double fy, double fz, double dt, QEla
     }
 }
 
-CelestialBody::CelestialBody(double mass, double radius, double x, double y, double z, double vx, double vy, double vz)
-    : mass(mass), radius(radius), x(x), y(y), z(z), vx(vx), vy(vy), vz(vz) {
+CelestialBody::CelestialBody(std::string name, double mass, double radius, double x, double y, double z, double vx, double vy, double vz, int objectType)
+    : name(name), mass(mass), radius(radius), x(x), y(y), z(z), vx(vx), vy(vy), vz(vz), objectType(objectType) {
 
 }
 
@@ -177,9 +179,9 @@ void CelestialBody::updateVelocity(double fx, double fy, double fz, double dt) {
 
 
 Universe::Universe()
-    : octree({0, 0, 0}, 800) {  // The size of the Octree is now 1.0
+    : octree({0, 0, 0}, 4000) {  // The size of the Octree is now 1.0
     if (debug) {
-        std::cout << "Created Universe with Octree root node at (0, 0, 0) and size 800 " << std::endl;
+        std::cout << "Created Universe with Octree root node at (0, 0, 0) and size 4000 " << std::endl;
     }
 }
 
@@ -201,6 +203,7 @@ void Universe::removeSpacecraft(int index) {
 void Universe::addBody(const CelestialBody &b) {
     bodies.push_back(b);
     octree.insert({{b.x, b.y, b.z}, b.radius});
+    bodyMap.insert({b.name, b});
 }
 
 // Remove a celestial body
@@ -208,6 +211,7 @@ void Universe::removeBody(int index) {
     // You'll need to implement OctreeNode::remove to remove objects from the Octree
     //octree.remove({{bodies[index].x, bodies[index].y, bodies[index].z}, bodies[index].radius});
     bodies.erase(bodies.begin() + index);
+    bodyMap.erase(bodies[index].name);
 }
 
 // Check for collisions
@@ -216,7 +220,7 @@ bool Universe::checkCollisions() {
 }
 
 void Universe::update(double dt, QElapsedTimer& debugTimer) {
-    double scaleFactor = 1.0e6;
+    double scaleFactor = 1.0e15;
 
     if(debug && debugTimer.elapsed() % 500 < 16){
         qDebug() << "";
@@ -239,7 +243,6 @@ void Universe::update(double dt, QElapsedTimer& debugTimer) {
         }
     }
 
-    // Calculate forces for celestial bodies
     for (CelestialBody &body1 : bodies) {
         for (const CelestialBody &body2 : bodies) {
             if (&body1 != &body2) {  // Don't calculate force of body on itself
@@ -252,7 +255,9 @@ void Universe::update(double dt, QElapsedTimer& debugTimer) {
                 // Scale the force to the scaled units
                 double force_scaled = force / (scaleFactor * scaleFactor);
 
+                // Apply the force in the direction of the displacement vector
                 body1.updateVelocity(force_scaled * dx, force_scaled * dy, force_scaled * dz, dt);
+                bodyMap[body1.name] = body1;
             }
         }
     }
@@ -261,7 +266,7 @@ void Universe::update(double dt, QElapsedTimer& debugTimer) {
     if (checkCollisions() && debugTimer.elapsed() % 500 < 16){
         // If a collision is detected, print a message and exit the program
         std::cout << "Collision detected. Exiting program." << std::endl;
-        exit(0);
+        //exit(0);
     }
 
     // Update positions
