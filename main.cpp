@@ -1,11 +1,10 @@
 #include <GL/glew.h>
-#include <QApplication>
+#include </Users/thomasthrelkeld/Qt/6.6.0/macos/lib/QtWidgets.framework/Versions/A/Headers/QApplication>
 #include <QOpenGLWindow>
 #include <QOpenGLFunctions>
 #include <QTimer>
 #include <QElapsedTimer>
-#include <glm/glm.hpp>
-#include <glm/gtc/matrix_transform.hpp>
+#include <glm/glm.hpp>  
 #include <SDL.h>
 #include <QKeyEvent>
 #include <QWheelEvent>
@@ -22,174 +21,300 @@
 #include <QListWidget>
 #include <QListWidgetItem>
 #include "simulation.h"
+#include <QVector3D>
+#include <iostream>
+#include <QQuaternion>
+
 
 class MyOpenGLWindow : public QOpenGLWidget, protected QOpenGLFunctions {
 
 private:
     Universe universe;  // Your Universe object
-
-    float cameraRadius = 2000000000.0f;
+    float cameraRadius = 0.0f;
     float changeFocusCameraRadiusScale = 0.2f;
-    float sunRenderRadius = 1000000000.0f;
-    float earthRenderRadius = 9000000.0f;
-    float moonRenderRadius = 2400000.0f;
+    //These renderRadii do not effects the physics at all. The are simply visual. The value for the sun was arbitrarily set to a value that seemed visually large enough
+    //and then the other sizes are based on the realistic percentage of the sun's size that each celestial body is in real life
+    float sunRenderRadius = 8550000000.0f;
+    float earthRenderRadius = 900000000.0f;
+    float moonRenderRadius = 24000000.0f;
+    float venusRenderRadius = 855000000.0f;
+    float mercuryRenderRadius = 300000000.0f;
+    float marsRenderRadius = 400000000.0f;
+    float jupiterRenderRadius = 9873000000.0f;
+    float saturnRenderRadius = 8226000000.0f;
+    float uranusRenderRadius = 3582000000.0f;
+    float neptuneRenderRadius = 3474000000.0f;
+
     bool topDownView = false;
     bool mousePress = false;
+
     float angleX = 0.0f;
     float angleY = 0.0f;
     float angleZ = 0.0f;
     QPoint lastMousePos;
-
-    float scaleFactor = 1.0;  // The scale factor you used to scale down the universe
-    // Create the Sun with solar apex motion
-
-    // Constants for the Earth
-    const double EARTH_MASS = 5.972e24;  // in kilograms
-    const double EARTH_RADIUS = 6.371e6;  // in meters
-    // Constants for the Moon
-    const double MOON_MASS = 7.342e22;  // in kilograms
-    const double MOON_RADIUS = 1.737e6;  // in meters
-    // Distance from the Earth to the Moon
-    const double EARTH_MOON_DISTANCE = 3.844e8;  // in meters
-    // Low Earth orbit altitude
-    const double LOW_EARTH_ORBIT_ALTITUDE = 2.0e6;  // in meters
+    float scaleFactor = 1.0;  // The scale factor you used to scale down the universe. Currently set to 1 because it gave the most realistic physics
     const bool debug = true;
+    const bool SUN_RELATIVE_LSR = false;
+    const bool USE_RUNGE_KUTTA = false;
+    int MAX_PAST_POSITIONS = 100;
     QElapsedTimer debugTimer;
-    int timeScale = 1;
+    float timeScale = 1.0f;
     const double GRAVITATIONAL_CONSTANT = 6.67430e-11;  // in m^3 kg^-1 s^-2
-    CelestialBody selectedBody;
+    CelestialBody* selectedBody;
+     double SUN_MASS = 1.989e30;  // in kilograms
+
 
 public:
-    float cameraX = 0;
-    float cameraY = 0;
-    float cameraZ = 0;  // Adjust this value as needed
+     QTimer simulationTimer;
+     QTimer renderTimer;
+     double visRadiusScale = 1/30000.0f; // use smallest celestial body
+    float miniMapSize = 400.0f; // Adjust the size of the mini map as needed
+    float miniMapMargin = 10.0f; // Adjust the margin of the mini map as needed
+     QVector3D cameraPos;
     QListWidget* listWidget;
+
     MyOpenGLWindow(QWidget *parent = nullptr)
         : QOpenGLWidget(parent) {
+        connect(&simulationTimer, &QTimer::timeout, this, &MyOpenGLWindow::updateUniverse);
+        connect(&renderTimer, &QTimer::timeout, this, &MyOpenGLWindow::updateWrapper);
         listWidget = new QListWidget;
         debugTimer.start();
-        // Add some celestial bodies
-
-        const double SUN_MASS = 1.989e30;  // in kilograms
-        const double SUN_RADIUS = 6.9634e8;  // in meters
-        const double EARTH_SUN_DISTANCE = 1.496e11;  // in meters
-        const double SUN_VELOCITY_X = -9700.0;  // in meters per second (approximate value for solar apex motion)
-        const double SUN_VELOCITY_Y = 20000.0;  // in meters per second (approximate value for solar apex motion)
-        const double SUN_VELOCITY_Z = 7000.0;   // in meters per second (approximate value for solar apex motion)
-
-        // Scale the velocity components based on the scaleFactor
-        double scaledSunVelocityX = SUN_VELOCITY_X / scaleFactor;
-        double scaledSunVelocityY = SUN_VELOCITY_Y / scaleFactor;
-        double scaledSunVelocityZ = SUN_VELOCITY_Z / scaleFactor;
-
-        // Set the initial position of the Sun
-        double initialSunX = 0.0;  // Set the initial x-position of the Sun
-        double initialSunY = 0.0;  // Set the initial y-position of the Sun
-        double initialSunZ = 0.0;  // Set the initial z-position of the Sun
-
-        // Set the Sun's velocity and position
-        CelestialBody sun("Sun", SUN_MASS, SUN_RADIUS / scaleFactor,
-                          initialSunX, initialSunY, initialSunZ,
-                          scaledSunVelocityX, scaledSunVelocityY, scaledSunVelocityZ,
-                          0, sunRenderRadius
-                          );
-        universe.addBody(sun);
-
-
-
-        // Calculate the Earth's initial velocity around the Sun
-        double earth_velocity = std::sqrt(GRAVITATIONAL_CONSTANT * SUN_MASS / EARTH_SUN_DISTANCE);
-
-        // Set the Earth's velocity and position
-        CelestialBody earth("Earth", EARTH_MASS, EARTH_RADIUS / scaleFactor, EARTH_SUN_DISTANCE / scaleFactor, 0, 0, 0, earth_velocity / scaleFactor, 0, 1, earthRenderRadius);
-        universe.addBody(earth);
-
-        // Calculate the Moon's initial velocity around the Earth
-        double moon_velocity = std::sqrt(GRAVITATIONAL_CONSTANT * EARTH_MASS / EARTH_MOON_DISTANCE);
-
-        // The Moon's total velocity is the sum of its velocity around the Earth and the Earth's velocity around the Sun
-        double moon_total_velocity = moon_velocity+earth_velocity;
-
-        // Set the Moon's velocity and position
-        CelestialBody moon("Moon", MOON_MASS, MOON_RADIUS / scaleFactor, (EARTH_MOON_DISTANCE + EARTH_SUN_DISTANCE) / scaleFactor, 0, 0, 0, moon_total_velocity / scaleFactor, 0, 2, moonRenderRadius);
-        universe.addBody(moon);
-
-//        // Calculate the distance from the center of the Earth
-//        double distance = EARTH_RADIUS + LOW_EARTH_ORBIT_ALTITUDE;
-
-//        // Scale down the distance
-//        double distance_scaled = distance / scaleFactor;
-
-//        // Calculate the initial position of the spacecraft (in low Earth orbit)
-//        double initial_position = EARTH_RADIUS + LOW_EARTH_ORBIT_ALTITUDE;
-
-//        // Add an offset to the initial position
-//        double offset = 2.0e8;  // Adjust this value as needed
-//        initial_position += offset;
-//        double initial_position_scaled = initial_position / scaleFactor;
-//        // Calculate the gravitational force from the Earth
-//        double force_earth = GRAVITATIONAL_CONSTANT * EARTH_MASS / std::pow(initial_position_scaled, 2);
-//        double velocity = std::sqrt(force_earth * initial_position_scaled); //todo use init pos or scaled pos
-//        double velocity_scaled = velocity / scaleFactor;
-//        double dx = initial_position_scaled - earth.x;
-//        double dy = 0 - earth.y;  // Assuming the Earth's y-coordinate is 0
-
-//        // Get a vector that's orthogonal to the displacement vector
-//        double vx = dy;
-//        double vy = -dx;
-
-//        // Normalize the velocity vector (make it have a length of 1)
-//        double length = std::sqrt(vx*vx + vy*vy);
-//        vx /= length;
-//        vy /= length;
-
-//        // Scale the velocity vector by the calculated velocity
-//        vx *= velocity_scaled;
-//        vy *= velocity_scaled;
-
-        // Set the spacecraft's velocity
-        //Spacecraft spacecraft(1000, 1, initial_position_scaled, 0, 0, vx, vy, 0);
-        //universe.addSpacecraft(Spacecraft(1000, 0.5, initial_position_scaled, 0, 0, vx, vy, 0));
-
-        if(debug){
-//            qDebug() << "spacecraft starting Distance (scaled):" << distance_scaled;
-//            qDebug() << "spacecraft starting vx, vy: " << vx << ", " << vy;
-//            qDebug() << "spacecraft starting Initial position:" << initial_position;
-            qDebug() << "all objects Initial positions:" << sun.x << earth.x << moon.x;
-            qDebug() << "all objects Initial v:" << sun.vx << earth.vx << moon.vx;
-
-        }
-        // Add the spacecraft to the universe
-        //universe.addSpacecraft(spacecraft);
+        addSun();
+        addMercury();
+        addVenus();
+        addEarth();
+        addMars();
+       // addJupiter();
+        //addSaturn();
+       // addNeptune();
+       // addUranus();
 
     }
+
+
+  
+
+    void addSun(){
+        const double SUN_RADIUS = 6.9634e8;  // in meters
+        QVector3D SUN_VELOCITY(0, 0, 0);
+        if(SUN_RELATIVE_LSR){
+            SUN_VELOCITY = QVector3D(-9700.0, 20000.0, 7000.0);  // in meters per second (approximate value for solar apex motion)
+        }
+        // Scale the velocity components based on the scaleFactor
+        QVector3D scaledSunVelocity = SUN_VELOCITY / scaleFactor;
+        // Set the initial position of the Sun
+        QVector3D initialSunPosition(0.0, 0.0, 0.0);  // Set the initial position of the Sun
+        // Set the Sun's velocity and position
+        CelestialBody sun("Sun", SUN_MASS, SUN_RADIUS / scaleFactor, initialSunPosition, scaledSunVelocity, 0.0, sunRenderRadius*visRadiusScale, false);
+        universe.addBody(sun);
+        selectedBody = &sun;
+        qDebug() << "Adding Sun with position:" << initialSunPosition << "and velocity:" << scaledSunVelocity;
+
+    }
+
+    void addMercury(){
+        // Constants for Mercury
+        const double MERCURY_MASS = 3.3011e23;  // in kilograms
+        const double MERCURY_RADIUS = 2.4397e6;  // in meters
+        const double SUN_MERCURY_DISTANCE = 5.791e10;  // in meters
+
+        // Calculate the velocity of Mercury
+        double mercury_velocity_magnitude = sqrt(GRAVITATIONAL_CONSTANT * SUN_MASS / SUN_MERCURY_DISTANCE) / scaleFactor;
+        double mercury_inclination = 7.0 * M_PI / 180.0;
+
+        // Set the Mercury's velocity and position
+        QVector3D mercury_position(SUN_MERCURY_DISTANCE / scaleFactor * cos(mercury_inclination), 0, SUN_MERCURY_DISTANCE / scaleFactor * sin(mercury_inclination));
+        QVector3D mercury_velocity(0, -mercury_velocity_magnitude, 0);
+        CelestialBody mercury("Mercury", MERCURY_MASS, MERCURY_RADIUS / scaleFactor, mercury_position, mercury_velocity, 1.0, mercuryRenderRadius*visRadiusScale, false);
+        universe.addBody(mercury);
+        qDebug() << "Adding Mercury with position:" << mercury_position << "and velocity:" << mercury_velocity;
+    }
+
+       void addVenus(){
+       // Constants for Venus
+       const double VENUS_MASS = 4.8675e24;  // in kilograms
+       const double VENUS_RADIUS = 6.0518e6;  // in meters
+       const double SUN_VENUS_DISTANCE = 1.0821e11;  // in meters
+       
+       double venus_velocity_magnitude = sqrt(GRAVITATIONAL_CONSTANT * SUN_MASS / SUN_VENUS_DISTANCE) / scaleFactor;
+       double venus_inclination = 3.4 * M_PI / 180.0;
+       QVector3D venus_position(SUN_VENUS_DISTANCE / scaleFactor * cos(venus_inclination), 0, SUN_VENUS_DISTANCE / scaleFactor * sin(venus_inclination));
+        QVector3D venus_velocity(0, -venus_velocity_magnitude, 0);
+       // Set the Venus's velocity and position
+       CelestialBody venus("Venus", VENUS_MASS, VENUS_RADIUS / scaleFactor, venus_position, venus_velocity, 2.0, venusRenderRadius*visRadiusScale, false);
+       universe.addBody(venus);
+       qDebug() << "Adding Venus with position:" << venus_position << "and velocity:" << venus_velocity;
+   }
+
+       void addEarth(){
+       // Constants for the Earth
+       const double EARTH_MASS = 5.972e24;  // in kilograms
+       const double EARTH_RADIUS = 6.371e6;  // in meters
+       const double EARTH_SUN_DISTANCE = 1.496e11;  // in meters
+       // Constants for the Moon
+       const double MOON_MASS = 7.342e22;  // in kilograms
+       const double MOON_RADIUS = 1.737e6;  // in meters
+       // Distance from the Earth to the Moon
+       const double EARTH_MOON_DISTANCE = 3.844e8;  // in meters
+       // Calculate the velocity of Earth
+        double earth_velocity_magnitude = sqrt(GRAVITATIONAL_CONSTANT * SUN_MASS / EARTH_SUN_DISTANCE) / scaleFactor;
+        double earth_inclination = 0.0 * M_PI / 180.0;
+
+        QVector3D earth_position(EARTH_SUN_DISTANCE / scaleFactor * cos(earth_inclination), 0, EARTH_SUN_DISTANCE / scaleFactor * sin(earth_inclination));
+        QVector3D earth_velocity(0, -earth_velocity_magnitude * cos(earth_inclination), -earth_velocity_magnitude * sin(earth_inclination));
+       // QVector3D earth_velocity(0, -earth_velocity_magnitude, 0);
+        CelestialBody earth("Earth", EARTH_MASS, EARTH_RADIUS / scaleFactor, earth_position, earth_velocity, 3, earthRenderRadius*visRadiusScale, false);
+
+        
+        double moon_velocity_magnitude = sqrt(GRAVITATIONAL_CONSTANT * EARTH_MASS / EARTH_MOON_DISTANCE) / scaleFactor;
+        double moon_inclination = 5.14 * M_PI / 180.0;
+        QVector3D moon_position = earth_position + QVector3D(EARTH_MOON_DISTANCE / scaleFactor * cos(moon_inclination), 0, EARTH_MOON_DISTANCE / scaleFactor * sin(moon_inclination));
+        QVector3D moon_velocity = QQuaternion::fromAxisAndAngle(QVector3D(0, 1, 0), earth_inclination * 180.0 / M_PI) * QVector3D(0, moon_velocity_magnitude * cos(moon_inclination), moon_velocity_magnitude * sin(moon_inclination));
+
+        CelestialBody moon("Moon", MOON_MASS, MOON_RADIUS / scaleFactor, moon_position, earth_velocity + moon_velocity, 3.1, moonRenderRadius*visRadiusScale, true);   
+        //earth.moons.push_back(moon);
+
+        universe.addBody(moon);
+        universe.addBody(earth);
+        
+        qDebug() << "Adding Earth with position:" << earth_position << "and velocity:" << earth_velocity;
+         qDebug() << "Adding Moon with position:" << moon_position << "and velocity:" << moon_velocity;
+   }
+
+    void addMars(){
+       // Constants for Mars
+    const double MARS_MASS = 0.64171e24;  // in kilograms
+    const double MARS_RADIUS = 3.3895e6;  // in meters
+    const double SUN_MARS_DISTANCE = 2.2792e11;  // in meters
+
+    // Constants for Phobos
+    const double PHOBOS_MASS = 1.0659e16;  // in kilograms
+    const double PHOBOS_RADIUS = 1.1e4;  // in meters
+    const double MARS_PHOBOS_DISTANCE = 9.377e6;  // in meters
+
+    // Constants for Deimos
+    const double DEIMOS_MASS = 1.4762e15;  // in kilograms
+    const double DEIMOS_RADIUS = 6.2e3;  // in meters
+    const double MARS_DEIMOS_DISTANCE = 2.346e7;  // in meters
+
+    // Calculate the velocity of Mars
+    double mars_velocity_magnitude = sqrt(GRAVITATIONAL_CONSTANT * SUN_MASS / SUN_MARS_DISTANCE) / scaleFactor;
+    double mars_inclination = 1.85 * M_PI / 180.0;
+
+    QVector3D mars_position(SUN_MARS_DISTANCE / scaleFactor * cos(mars_inclination), 0, SUN_MARS_DISTANCE / scaleFactor * sin(mars_inclination));
+    QVector3D mars_velocity(0, -mars_velocity_magnitude, 0);
+    CelestialBody mars("Mars", MARS_MASS, MARS_RADIUS / scaleFactor, mars_position, mars_velocity, 4.0, marsRenderRadius*visRadiusScale, false);
+
+   // Calculate the velocity of Phobos
+double phobos_velocity_magnitude = sqrt(GRAVITATIONAL_CONSTANT * MARS_MASS / MARS_PHOBOS_DISTANCE) / scaleFactor;
+double phobos_inclination = 1.08 * M_PI / 180.0;  // Inclination of Phobos's orbit
+QVector3D phobos_position = mars_position + QVector3D(MARS_PHOBOS_DISTANCE / scaleFactor * cos(phobos_inclination), 0, MARS_PHOBOS_DISTANCE / scaleFactor * sin(phobos_inclination));
+QVector3D phobos_velocity = QQuaternion::fromAxisAndAngle(QVector3D(0, 1, 0), mars_inclination * 180.0 / M_PI) * QVector3D(0, phobos_velocity_magnitude * cos(phobos_inclination), phobos_velocity_magnitude * sin(phobos_inclination));
+phobos_velocity = phobos_velocity - mars_velocity;  // Transform to the reference frame of the Sun
+CelestialBody phobos("Phobos", PHOBOS_MASS, PHOBOS_RADIUS / scaleFactor, phobos_position, phobos_velocity, 4.1, moonRenderRadius*visRadiusScale, true);
+
+// Calculate the velocity of Deimos
+double deimos_velocity_magnitude = sqrt(GRAVITATIONAL_CONSTANT * MARS_MASS / MARS_DEIMOS_DISTANCE) / scaleFactor;
+double deimos_inclination = 1.79 * M_PI / 180.0;  // Inclination of Deimos's orbit
+QVector3D deimos_position = mars_position + QVector3D(MARS_DEIMOS_DISTANCE / scaleFactor * cos(deimos_inclination), 0, MARS_DEIMOS_DISTANCE / scaleFactor * sin(deimos_inclination));
+QVector3D deimos_velocity = QQuaternion::fromAxisAndAngle(QVector3D(0, 1, 0), mars_inclination * 180.0 / M_PI) * QVector3D(0, deimos_velocity_magnitude * cos(deimos_inclination), deimos_velocity_magnitude * sin(deimos_inclination));
+deimos_velocity = deimos_velocity - mars_velocity;  // Transform to the reference frame of the Sun
+CelestialBody deimos("Deimos", DEIMOS_MASS, DEIMOS_RADIUS / scaleFactor, deimos_position, deimos_velocity, 4.2, moonRenderRadius*visRadiusScale, true);
+
+
+    universe.addBody(phobos);
+    universe.addBody(deimos);
+    universe.addBody(mars);
+    qDebug() << "Adding Mars with position:" << mars_position << "and velocity:" << mars_velocity;
+    qDebug() << "Adding Phobos with position:" << phobos_position << "and velocity:" << phobos_velocity;
+    qDebug() << "Adding Deimos with position:" << deimos_position << "and velocity:" << deimos_velocity;
+    }
+      
+
+   void addJupiter(){
+       // Constants for Jupiter
+       const double JUPITER_MASS = 1898.19e24;  // in kilograms
+       const double JUPITER_RADIUS = 69.911e6;  // in meters
+       const double SUN_JUPITER_DISTANCE = 7.7857e11;  // in meters
+
+        double jupiter_velocity_magnitude = sqrt(GRAVITATIONAL_CONSTANT * SUN_MASS / SUN_JUPITER_DISTANCE) / scaleFactor;
+       double jupiter_inclination = 1.304 * M_PI / 180.0;
+       QVector3D jupiter_position(SUN_JUPITER_DISTANCE / scaleFactor * cos(jupiter_inclination), 0, SUN_JUPITER_DISTANCE / scaleFactor * sin(jupiter_inclination));
+        QVector3D jupiter_velocity(0, -jupiter_velocity_magnitude, 0);
+       // Set the Jupiter's velocity and position
+       CelestialBody jupiter("Jupiter", JUPITER_MASS, JUPITER_RADIUS / scaleFactor, jupiter_position, jupiter_velocity, 5.0, jupiterRenderRadius*visRadiusScale, false);
+       universe.addBody(jupiter);
+       qDebug() << "Adding Jupiter with position:" << jupiter_position << "and velocity:" << jupiter_velocity;
+   }
+
+   void addSaturn(){
+       // Constants for Saturn
+       const double SATURN_MASS = 568.34e24;  // in kilograms
+       const double SATURN_RADIUS = 58.232e6;  // in meters
+       const double SUN_SATURN_DISTANCE = 1.4335e12;  // in meters
+       double saturn_velocity_magnitude = sqrt(GRAVITATIONAL_CONSTANT * SUN_MASS / SUN_SATURN_DISTANCE) / scaleFactor;
+       double saturn_inclination = 2.485 * M_PI / 180.0;
+        QVector3D saturn_position(SUN_SATURN_DISTANCE / scaleFactor * cos(saturn_inclination), 0, SUN_SATURN_DISTANCE / scaleFactor * sin(saturn_inclination));
+        QVector3D saturn_velocity(0, -saturn_velocity_magnitude, 0);
+      
+       // Set the Saturn's velocity and position
+       CelestialBody saturn("Saturn", SATURN_MASS, SATURN_RADIUS / scaleFactor, saturn_position, saturn_velocity, 6.0, saturnRenderRadius*visRadiusScale, false);
+       universe.addBody(saturn);
+       qDebug() << "Adding Saturn with position:" << saturn_position << "and velocity:" << saturn_velocity;
+   }
+
+   void addNeptune(){
+       // Constants for Neptune
+       const double NEPTUNE_MASS = 102.413e24;  // in kilograms
+       const double NEPTUNE_RADIUS = 24.622e6;  // in meters
+       const double SUN_NEPTUNE_DISTANCE = 4.4951e12;  // in meters
+       double neptune_velocity_magnitude = sqrt(GRAVITATIONAL_CONSTANT * SUN_MASS / SUN_NEPTUNE_DISTANCE) / scaleFactor;
+       double neptune_inclination = 1.767 * M_PI / 180.0;
+        QVector3D neptune_position(SUN_NEPTUNE_DISTANCE / scaleFactor * cos(neptune_inclination), 0, SUN_NEPTUNE_DISTANCE / scaleFactor * sin(neptune_inclination));
+        QVector3D neptune_velocity(0, -neptune_velocity_magnitude, 0);
+       // Set the Neptune's velocity and position
+       CelestialBody neptune("Neptune", NEPTUNE_MASS, NEPTUNE_RADIUS / scaleFactor, neptune_position, neptune_velocity, 7.0, neptuneRenderRadius*visRadiusScale, false);
+       universe.addBody(neptune);
+       qDebug() << "Adding Neptune with position:" << neptune_position << "and velocity:" << neptune_velocity;
+   }
+
+   void addUranus(){
+       // Constants for Uranus
+       const double URANUS_MASS = 86.813e24;  // in kilograms
+       const double URANUS_RADIUS = 25.362e6;  // in meters
+       const double SUN_URANUS_DISTANCE = 2.8725e12;  // in meters
+        double uranus_velocity_magnitude = sqrt(GRAVITATIONAL_CONSTANT * SUN_MASS / SUN_URANUS_DISTANCE) / scaleFactor;
+       double uranus_inclination = 0.772 * M_PI / 180.0;
+       QVector3D uranus_position(SUN_URANUS_DISTANCE / scaleFactor * cos(uranus_inclination), 0, SUN_URANUS_DISTANCE / scaleFactor * sin(uranus_inclination));
+        QVector3D uranus_velocity(0, -uranus_velocity_magnitude, 0);
+       // Set the Uranus's velocity and position
+       CelestialBody uranus("Uranus", URANUS_MASS, URANUS_RADIUS / scaleFactor, uranus_position, uranus_velocity, 8.0, uranusRenderRadius*visRadiusScale, false);
+       universe.addBody(uranus);
+       qDebug() << "Adding Uranus with position:" << uranus_position << "and velocity:" << uranus_velocity;
+   }
+
+
+
 
 protected:
 
     void initializeGL() override {
         initializeOpenGLFunctions();
-
         // Enable depth testing
         glEnable(GL_DEPTH_TEST);
-
         // Set the clear color to black
         glClearColor(0.0f, 0.0f, 0.0f, 1.0f);  // Change to a gray color
-
         // Generate sphere vertices
         std::vector<GLfloat> sphereVertices = generateSphereVertices(1.0f, 64, 32);
-
         // Create a vertex buffer object (VBO)
         GLuint vbo;
         glGenBuffers(1, &vbo);
-
         // Bind the VBO and upload the vertex data
         glBindBuffer(GL_ARRAY_BUFFER, vbo);
         glBufferData(GL_ARRAY_BUFFER, sphereVertices.size() * sizeof(GLfloat), &sphereVertices[0], GL_STATIC_DRAW);
-
         // Set up the projection matrix
         glMatrixMode(GL_PROJECTION);
         glLoadIdentity();
-
         // Set up the model-view matrix
         glMatrixMode(GL_MODELVIEW);
         glLoadIdentity();
@@ -202,10 +327,9 @@ protected:
         // Convert degrees to steps (a full step is 15 degrees)
         float steps = degrees / 15.0f;
         // Adjust the camera radius based on the number of steps
-        cameraRadius -= steps * 100.0f;  // Adjust the factor as needed
-        // Ensure the radius stays within a certain range
-        cameraRadius = std::max(5.0f, std::min(10000000000000.0f, cameraRadius));  // Adjust the range as needed
-        updateCameraPosition(); // Update the camera position
+        cameraRadius -= steps * 15000.0f;  // Adjust the factor as needed
+
+
     }
 
     void mousePressEvent(QMouseEvent *event) override {
@@ -220,20 +344,10 @@ protected:
             QPoint delta = event->pos() - lastMousePos;
             angleX += delta.x() * 0.05f;
             angleY += delta.y() * 0.05f;
-            angleY = std::max(-89.9f, std::min(89.9f, angleY));
+            //angleY = std::max(-359.9f, std::min(359.9f, angleY));
 
-            // Calculate the new camera position
-            float cameraX = selectedBody.x + cameraRadius * std::cos(angleX * M_PI / 180.0f) * std::cos(angleY * M_PI / 180.0f);
-            float cameraY = selectedBody.y + cameraRadius * std::sin(angleY * M_PI / 180.0f);
-            float cameraZ = selectedBody.z + cameraRadius * std::sin(angleX * M_PI / 180.0f) * std::cos(angleY * M_PI / 180.0f);
 
-            // Update the camera position
-            this->cameraX = cameraX;
-            this->cameraY = cameraY;
-            this->cameraZ = cameraZ;
-
-            // Request a redraw of the scene
-            update();
+            //updateCameraPosition();
 
             lastMousePos = event->pos();
         }
@@ -245,163 +359,173 @@ protected:
         }
     }
 
-    double calculateMaxDistance() {
-        double maxDistance = 0.0;
-        for (const CelestialBody& body1 : universe.bodies) {
-            for (const CelestialBody& body2 : universe.bodies) {
-                if (&body1 != &body2) {
-                    double dx = body1.x - body2.x;
-                    double dy = body1.y - body2.y;
-                    double dz = body1.z - body2.z;
-                    double distance = sqrt(dx*dx + dy*dy + dz*dz);
-                    if (distance > maxDistance) {
-                        maxDistance = distance;
-                    }
-                }
-            }
-        }
-        return maxDistance;
-    }
-
-    std::vector<GLfloat> generateSphereVertices(float radius, unsigned int rings, unsigned int sectors) {
-        std::vector<GLfloat> vertices;
-
-        float const R = 1.0f / (float)(rings - 1);
-        float const S = 1.0f / (float)(sectors - 1);
-
-        for (unsigned int r = 0; r < rings; ++r) {
-            for (unsigned int s = 0; s < sectors; ++s) {
-                float const y = sin(-M_PI_2 + M_PI * r * R);
-                float const x = cos(2 * M_PI * s * S) * sin(M_PI * r * R);
-                float const z = sin(2 * M_PI * s * S) * sin(M_PI * r * R);
-
-                vertices.push_back(x * radius);
-                vertices.push_back(y * radius);
-                vertices.push_back(z * radius);
-            }
-        }
-
-        return vertices;
-    }
-
     void updateCameraPosition() {
 
+        if(!topDownView){
 
-        float cameraX = selectedBody.x * scaleFactor + cameraRadius * std::cos(angleX * M_PI / 180.0f) * std::cos(angleY * M_PI / 180.0f);
-        float cameraY = selectedBody.y * scaleFactor + cameraRadius * std::sin(angleY * M_PI / 180.0f);
-        float cameraZ = selectedBody.z* scaleFactor + cameraRadius * std::sin(angleX * M_PI / 180.0f) * std::cos(angleY * M_PI / 180.0f);
-        this->cameraX = cameraX ;
-        this->cameraY = cameraY;
-        this->cameraZ = cameraZ;
+            float x = cameraRadius * std::sin(angleY * M_PI / 180.0f) * std::cos(angleX * M_PI / 180.0f);
+            float y = cameraRadius * std::sin(angleY * M_PI / 180.0f) * std::sin(angleX * M_PI / 180.0f);
+            float z = cameraRadius * std::cos(angleY * M_PI / 180.0f);
+
+            // Add the position of the object to the camera position
+            cameraPos = QVector3D(selectedBody->position.x() * visRadiusScale + x, selectedBody->position.y() * visRadiusScale + y, selectedBody->position.z() * visRadiusScale + z);
+        } else {
+            double zVal = 50000;
+            // For top-down view, set the camera's position to match the selected body's position and add an offset in the z direction
+            cameraPos = QVector3D(selectedBody->position.x() * visRadiusScale, selectedBody->position.y() * visRadiusScale, zVal);
+
+        }
 
         update(); // Request a redraw of the scene
     }
 
 
-    // Calculate the distance of a celestial body from the camera
-    double distanceToCamera(const CelestialBody& body) {
-        double dx = body.x * scaleFactor - cameraX;
-        double dy = body.y * scaleFactor - cameraY;
-        double dz = body.z * scaleFactor - cameraZ;
-        return std::sqrt(dx * dx + dy * dy + dz * dz);
-    }
-
     void paintGL() override {
+        
         // Clear the screen
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        // Enable depth testing for correct rendering order
+       glEnable(GL_DEPTH_TEST);
 
-        if (topDownView) {
-
-            cameraX = universe.bodyMap["Sun"].x * scaleFactor;
-            cameraY = universe.bodyMap["Sun"].y * scaleFactor;
-            // Set up the projection matrix for top-down view
-            glMatrixMode(GL_PROJECTION);
-            glLoadIdentity();
-            double left = -9000000000.0;
-            double right = 9000000000.0;
-            double bottom = -9000000000.0;
-            double top = 9000000000.0;
-            double zNear = 0.1;  // Distance to near clipping plane
-            double zFar = 1000000000000000000000.0;;  // Distance to far clipping plane
-            glOrtho(left, right, bottom, top, zNear, zFar);
-
-            // Set up the model-view matrix for top-down view
-            glMatrixMode(GL_MODELVIEW);
-            glLoadIdentity();
-            gluLookAt(cameraX, cameraY, 1000000000.0,  // Set the camera position above the solar system
-                      cameraX, cameraY, 0.0,        // Look at the center of the solar system
-                      0.0, 1.0, 0.0);
-        } else {
-            // Set up the projection matrix
-            glMatrixMode(GL_PROJECTION);
-            glLoadIdentity();
-            double fovy = 90.0;  // Field of view angle, in degrees, in the y direction
-            double aspect = (double)this->width() / (double)this->height();  // Aspect ratio (width to height)
-            double zNear = 0.1;  // Distance to near clipping plane
-            double zFar = 100000000000000000000.0;  // Distance to far clipping plane
-
-            gluPerspective(fovy, aspect, zNear, zFar);
-
-            // Set up the model-view matrix
-            glMatrixMode(GL_MODELVIEW);
-            glLoadIdentity();
-
-            gluLookAt(cameraX, cameraY, cameraZ, selectedBody.x, selectedBody.y, selectedBody.z, 0.0f, 1.0f, 0.0f);
-            updateCameraPosition();
-        }
-
-
-        // Sort the celestial bodies based on their distance to the camera
-        std::vector<CelestialBody> sortedBodies = universe.bodies;
-        std::sort(sortedBodies.begin(), sortedBodies.end(), [this](const CelestialBody& a, const CelestialBody& b) {
-            return distanceToCamera(a) > distanceToCamera(b);
-        });
-
-        // Draw the celestial bodies and spacecrafts
-        for (const CelestialBody& body : sortedBodies) {
-            glPushMatrix();
-            glTranslatef(body.x * scaleFactor, body.y * scaleFactor, body.z * scaleFactor);
-            if (body.objectType == 0) {
-                glColor3f(1.0f, 1.0f, 0.0f);  // Set the color to yellow for the sun
-            } else if (body.objectType == 1) {
-                glColor3f(0.0f, 0.0f, 1.0f);  // Set the color to blue for planets
-            } else if (body.objectType == 2) {
-                glColor3f(1.0f, 1.0f, 1.0f);  // Set the color to white for moons
+        if(selectedBody->name == ""){
+            for (CelestialBody& body : universe.bodies) {
+                if(body.name == "Sun"){
+                    selectedBody = &body;
+                    break;
+                }
             }
-            drawSphere(body.radius * scaleFactor, 20, 20, body.objectType);  // Pass the radius of the celestial body
+       }
+
+        // Draw the celestial bodies
+        for (CelestialBody& body : universe.bodies) {
+
+            glPushMatrix();
+
+            if (body.objectType == 0.0) {
+                 glColor3f(1.0f, 1.0f, 0.0f);  // Set the color to yellow for the sun
+            } else if (body.objectType == 1.0) {
+                glColor3f(0.0f, 1.0f, 0.0f);  // Set the color to green for Mercury           
+            } else if (body.objectType == 2.0) {
+                 glColor3f(1.0f, 0.0f, 1.0f);  // Set the color to magenta for Venus
+            } else if (body.objectType == 3.0){
+                  glColor3f(0.0f, 0.0f, 1.0f);  // Set the color to blue for Earth
+            } else if (body.objectType == 4.0){
+                 glColor3f(0.5f, 0.0f, 0.0f);  // Set the color to orange for Mars
+            } else if (body.objectType == 5.0){
+                 glColor3f(1.0f, 0.5f, 0.0f);  // Set the color to dark red for Jupiter
+            } else if (body.objectType == 6.0){
+                 glColor3f(0.5f, 0.5f, 0.0f);  // Set the color to olive for Saturn
+            } else if (body.objectType == 7.0){
+                 glColor3f(0.0f, 0.0f, 0.5f);  // Set the color to navy for Neptune               
+            } else if (body.objectType == 8.0){
+                glColor3f(0.0f, 0.5f, 0.5f);  // Set the color to teal for Uranus
+            } else {
+                glColor3f(1.0f, 1.0f, 1.0f);  // Set the color to white for Moons
+            }
+
+            QVector3D scalePosition(body.position.x() * visRadiusScale, body.position.y() * visRadiusScale, body.position.z() * visRadiusScale);
+
+            glTranslatef(scalePosition.x(), scalePosition.y(), scalePosition.z());
+            drawSphere(body.renderSize, 20, 20, body.objectType, false);  // Pass the radius of the celestial body
             glPopMatrix();
+
             glBegin(GL_LINE_STRIP);
+            glEnable(GL_BLEND);
+            glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
             float alpha = 1.0f;  // Start with full opacity
+            int count = 0;  // Count of past positions
             for (const QVector3D& pastPosition : body.pastPositions) {
-                glColor4f(1.0f, 1.0f, 1.0f, alpha);  // White color with alpha opacity
-                glVertex3f(pastPosition.x() * scaleFactor, pastPosition.y() * scaleFactor, pastPosition.z() * scaleFactor);
-                alpha *= 0.95f;  // Decrease the opacity for the next segment
+                alpha -= 0.005;  // Increase the rate of decrease
+                alpha = std::max(alpha, 0.0f);  // Ensure alpha never goes below 0
+                
+                if (body.objectType == 0.0) {
+                 glColor4f(1.0f, 1.0f, 0.0f, alpha);  // Set the color to yellow for the sun
+            } else if (body.objectType == 1.0) {
+                glColor4f(0.0f, 1.0f, 0.0f, alpha);  // Set the color to green for Mercury           
+            } else if (body.objectType == 2.0) {
+                 glColor4f(1.0f, 0.0f, 1.0f, alpha);  // Set the color to magenta for Venus
+            } else if (body.objectType == 3.0){
+                  glColor4f(0.0f, 0.0f, 1.0f, alpha);  // Set the color to blue for Earth
+            } else if (body.objectType == 4.0){
+                 glColor4f(0.5f, 0.0f, 0.0f, alpha);  // Set the color to orange for Mars
+            } else if (body.objectType == 5.0){
+                 glColor4f(1.0f, 0.5f, 0.0f, alpha);  // Set the color to dark red for Jupiter
+            } else if (body.objectType == 6.0){
+                 glColor4f(0.5f, 0.5f, 0.0f, alpha);  // Set the color to olive for Saturn
+            } else if (body.objectType == 7.0){
+                 glColor4f(0.0f, 0.0f, 0.5f, alpha);  // Set the color to navy for Neptune               
+            } else if (body.objectType == 8.0){
+                glColor4f(0.0f, 0.5f, 0.5f, alpha);  // Set the color to teal for Uranus
+            } else {
+                glColor4f(1.0f, 1.0f, 1.0f, alpha);  // Set the color to white for Moons
             }
-            glEnd();
+                glVertex3f(pastPosition.x()  * visRadiusScale, pastPosition.y()  * visRadiusScale, pastPosition.z() * visRadiusScale);
+                 count++;
+                  // Limit the number of past positions
+                if (count >= MAX_PAST_POSITIONS) {
+                    break;
+                }
+            }
+             glEnd();
+            if(body.name == selectedBody->name){
+                 selectedBody = &body;
+            }
         }
 
-        for (const Spacecraft& craft : universe.spacecrafts) {
-            glPushMatrix();
-            glTranslatef(craft.x * scaleFactor, craft.y * scaleFactor, craft.z * scaleFactor);
-            glColor3f(1.0f, 0.0f, 0.0f);  // Set the color to red for spacecrafts
-            drawSphere(0.001, 10, 10, 3);  // Use a small constant value for the spacecraft size
-            glPopMatrix();
-        }
+        QVector3D scalePos(selectedBody->position.x() * visRadiusScale, selectedBody->position.y() * visRadiusScale, selectedBody->position.z() * visRadiusScale);
+            // Set up the projection matrix for the top-down view or perspective view
+            if (topDownView) {
+                 // Set up the projection matrix for the top-down view
+                 glMatrixMode(GL_PROJECTION);
+                 glLoadIdentity();
+
+               double zoomFactor = 0.005;  // Adjust this value to zoom in or out
+
+                double left = (double)((this->width()*2)*-1) / zoomFactor;
+                double right = (double)(this->width()*2) / zoomFactor;
+                double bottom = (double)((this->width()*2)*-1) / zoomFactor;
+                double top = (double)(this->width()*2) / zoomFactor;
+                 double zNear = 1.0;  // Set near clipping plane based on camera distance
+                 double zFar = 10000000000000000000.0;  // Set far clipping plane based on camera distance
+
+
+                 glOrtho(left, right, bottom, top, zNear, zFar);
+                 glMatrixMode(GL_MODELVIEW);// Set up the model-view matrix for top-down view
+                 glLoadIdentity();
+
+                 gluLookAt(cameraPos.x(), cameraPos.y(), cameraPos.z(),
+                           scalePos.x() , scalePos.y(), scalePos.z(),
+                           0.0f, 0.0f, 1.0f);
+
+            } else {
+
+                 glMatrixMode(GL_PROJECTION);// Set up the projection matrix for the perspective view
+                 glLoadIdentity();
+                 double fovy = 90;  // Field of view angle, in degrees, in the y direction
+                 double aspect = (double)this->width() / (double)this->height();  // Aspect ratio (width to height)
+                 double zNear = 1.0;  // Distance to near clipping plane;  // Distance to near clipping plane
+                 double zFar = 10000000000000000000;  // Distance to far clipping plane
+                 gluPerspective(fovy, aspect, zNear, zFar);
+
+                 glMatrixMode(GL_MODELVIEW);
+                 glLoadIdentity();
+
+                 gluLookAt(cameraPos.x(), cameraPos.y(), cameraPos.z(),
+                           scalePos.x() , scalePos.y(), scalePos.z(),
+                           0.0f, 0.0f, 1.0f);
+
+            }
+
     }
 
-    void drawSphere(double r, int lats, int longs, int objectType) {
-        double visibleRadius = 0;
-        if(objectType == 0){
-            visibleRadius = sunRenderRadius; //std::max(r, 0.1 * scaleFactor);  // Use a minimum radius for visibility
-        } else if(objectType == 1) {
-           visibleRadius = earthRenderRadius; //std::max(r, 0.1 * scaleFactor);  // Use a minimum radius for visibility
-        } else if (objectType == 2){
-           visibleRadius = moonRenderRadius;;
-        } else {
-           visibleRadius = 1; //change this to a realistic value for a craft
-        }
-        glPushMatrix();  // Push the current matrix onto the stack
+
+    void drawSphere(double r, int lats, int longs, int objectType, bool isMiniMapObj) {
+         glPushMatrix();  // Push the current matrix onto the stack
+
+        double visibleRadius = r;
+        //qDebug() << "vis radius: " << visibleRadius;
         glScalef(visibleRadius, visibleRadius, visibleRadius);  // Scale
+
         int i, j;
         for(i = 0; i <= lats; i++) {
             double lat0 = M_PI * (-0.5 + (double) (i - 1) / lats);
@@ -427,111 +551,96 @@ protected:
         }
         glPopMatrix();  // Pop the current matrix off the stack
     }
+    std::vector<GLfloat> generateSphereVertices(float radius, unsigned int rings, unsigned int sectors) {
+        std::vector<GLfloat> vertices;
+        float const R = 1.0f / (float)(rings - 1);
+        float const S = 1.0f / (float)(sectors - 1);
+        for (unsigned int r = 0; r < rings; ++r) {
+            for (unsigned int s = 0; s < sectors; ++s) {
+                float const y = sin(-M_PI_2 + M_PI * r * R);
+                float const x = cos(2 * M_PI * s * S) * sin(M_PI * r * R);
+                float const z = sin(2 * M_PI * s * S) * sin(M_PI * r * R);
+
+                vertices.push_back(x * radius);
+                vertices.push_back(y * radius);
+                vertices.push_back(z * radius);
+            }
+        }
+        return vertices;
+    }
 
     void resizeGL(int w, int h) override {
         // Set the viewport to cover the entire widget
         glViewport(0, 0, w, h);
-
         // Set up the projection matrix
-        glMatrixMode(GL_PROJECTION);
+        glMatrixMode(GL_PROJECTION);// Set up the projection matrix for the perspective view
         glLoadIdentity();
-        double fovy = 90.0;  // Field of view angle, in degrees, in the y direction
-        double aspect = (double)w / (double)h;  // Aspect ratio (width to height)
-        double zNear = 0.01;  // Distance to near clipping plane
-        double zFar = 10000000000000.0;  // Distance to far clipping plane
-
-        gluPerspective(fovy, aspect, zNear, zFar);
-
-         updateCameraPosition();
+        double fovy = 90;  // Field of view angle, in degrees, in the y direction
+        double aspect = (double)this->width() / (double)this->height();  // Aspect ratio (width to height)
+        double zNear = 1.0;  // Distance to near clipping plane;  // Distance to near clipping plane
+        double zFar = 10000000000000000000;  // Distance to far clipping plane
+        gluPerspective(fovy, aspect, zNear, zFar);               
     }
 
 public slots:
-    void toggleTopDownView(int state) {
-         topDownView = (state == Qt::Checked);
-         updateCameraPosition();
+    void updateWrapper() {
          update();
     }
+    void toggleTopDownView(int state) {
+         topDownView = (state == Qt::Checked);
+         
+         updateCameraPosition();
+
+    }
+
     void changeFocus(QListWidgetItem* current, QListWidgetItem* previous) {
-        // Extract the body name from the item text
-        if (current) {
+         // Extract the body name from the item text
+         if (current) {
             QString bodyName = current->text().split(":").first();
             // Find the body in the universe
-
             if (universe.bodyMap.count(bodyName.toStdString()) > 0) {
-
-                selectedBody = universe.bodyMap[bodyName.toStdString()];
-                if(bodyName.toStdString() == "Sun"){
-                    cameraRadius = selectedBody.renderSize / changeFocusCameraRadiusScale;
-                } else if(bodyName.toStdString() == "Earth"){
-                   cameraRadius = selectedBody.renderSize / changeFocusCameraRadiusScale;
-                } else if(bodyName.toStdString() == "Earth"){
-                    cameraRadius = selectedBody.renderSize / changeFocusCameraRadiusScale;
-                }
+                selectedBody = &universe.bodyMap[bodyName.toStdString()];
+               
+                updateCameraPosition();
             }
-        }
+         }
     }
 
-    void adjustTimeScale(int value) {
-        // Adjust the time scale based on the slider value
-        // This is just an example; you'll need to replace this with your own logic
-        timeScale = static_cast<double>(value) / 0.0005;
+
+    void adjustTimeScale(float value) {
+       timeScale = static_cast<float>(value);  // Adjust the scaling factor as needed
     }
+
 
     void updateUniverse() {
-//        if (topDownView) {
-//            // Update the position of the sun in the top-down view
+       
+       universe.update(timeScale/1,debugTimer, USE_RUNGE_KUTTA); // Assuming 60 frames per second
 
-
-//            // Calculate the camera position to follow the sun
-//            cameraX = universe.bodyMap["Sun"].x * scaleFactor;
-//            cameraY = universe.bodyMap["Sun"].y * scaleFactor;
-//        }
-        // Update your universe here
-        universe.update(timeScale/12000.0,debugTimer); // Assuming 60 frames per second
-
-        // Calculate the scale factor
-        double maxDistance = 0.0;
-        for (const CelestialBody& body : universe.bodies) {
-            for (const CelestialBody& otherBody : universe.bodies) {
-                double distance = std::sqrt(std::pow(body.x - otherBody.x, 2) +
-                                            std::pow(body.y - otherBody.y, 2) +
-                                            std::pow(body.z - otherBody.z, 2));
-                maxDistance = std::max(maxDistance, distance);
-            }
-        }
-        double minScaleFactor = 0.01;  // Adjust as needed
-        double maxScaleFactor = 1.0;  // Adjust as needed
-        scaleFactor = this->width() / maxDistance;
-        scaleFactor = std::max(minScaleFactor, std::min(maxScaleFactor, static_cast<double>(scaleFactor)));
-        if (scaleFactor < 0.1) scaleFactor = 0.1;  // Set a lower limit for the scale factor
-
-        if(debug && debugTimer.elapsed() % 500 < 16){
-            for (const CelestialBody& body : universe.bodies) {
-                qDebug() << "body pos:" << body.x << body.y << body.z;
-            }
-            for (const Spacecraft& craft : universe.spacecrafts) {
-                qDebug() << "craft pos:" << craft.x << craft.y << craft.z;
-            }
-        }
-        listWidget->clear();
-        // Add the text for each celestial body
-        for (const CelestialBody& body : universe.bodies) {
+       listWidget->clear();
+       // Add the text for each celestial body
+       for (const CelestialBody& body : universe.bodies) {
+            //todo do i need to apply the scale here?
             QString text = QString("%1: Position (%2, %3, %4), Velocity (%5, %6, %7)")
-                               .arg(QString::fromStdString(body.name)).arg(body.x).arg(body.y).arg(body.z)
-                               .arg(body.vx).arg(body.vy).arg(body.vz);
+                               .arg(QString::fromStdString(body.name))
+                               .arg(body.position.x() * visRadiusScale).arg(body.position.y()* visRadiusScale ).arg(body.position.z() * visRadiusScale)
+                               .arg(body.velocity.x()).arg(body.velocity.y()).arg(body.velocity.z());
             listWidget->addItem(text);
-        }
-        // Update the list of past positions for each celestial body
-        for (CelestialBody& body : universe.bodies) {
-            body.pastPositions.push_front(QVector3D(body.x, body.y, body.z));  // Add the current position to the front of the list
-            while (body.pastPositions.size() > 1000) {  // Limit the size of the list
-                body.pastPositions.pop_back();  // Remove the oldest position
+       }
+       // Update the list of past positions for each celestial body
+       for (CelestialBody& body : universe.bodies) {
+            body.pastPositions.push_front(body.position);  // Add the current position to the front of the list
+            if(body.name == selectedBody->name){
+                selectedBody = &body;
             }
-        }
+       }
 
-        // Redraw the scene
-        update();
+       // Update the selected body's position
+       if (universe.bodyMap.count(selectedBody->name) > 0) {
+            selectedBody = &universe.bodyMap[selectedBody->name];
+       }
+       updateCameraPosition();
     }
+
 };
 
 int main(int argc, char* argv[]) {
@@ -547,19 +656,23 @@ int main(int argc, char* argv[]) {
     // Create the MyOpenGLWindow
     MyOpenGLWindow* openglWindow = new MyOpenGLWindow;
 
+    openglWindow->simulationTimer.start(100);
+    openglWindow->renderTimer.start(16);
     // Create the QSlider
     QSlider* timeSlider = new QSlider(Qt::Horizontal);
-    timeSlider->setRange(1, 5000);  // Adjust the range as needed
+    timeSlider->setRange(1, 100000);  // Adjust the range as needed
     timeSlider->setValue(1);
 
     // Create the QCheckBox for toggle switch
     QCheckBox* topDownCheckBox = new QCheckBox("Top-Down View");
     layout->addWidget(topDownCheckBox, 3, 1, 1, 1);
+    //topDownCheckBox->setChecked(true);
+    //topDownCheckBox->setCheckState(Qt::CheckState(true));
 
     // Connect the stateChanged signal of the QCheckBox to the toggleTopDownView slot
     QObject::connect(topDownCheckBox, &QCheckBox::stateChanged, openglWindow, &MyOpenGLWindow::toggleTopDownView);
 
-    openglWindow->listWidget->setFixedSize(600, 200);  // Adjust the width and height as needed
+    openglWindow->listWidget->setFixedSize(600, 230);  // Adjust the width and height as needed
 
     // Add the MyOpenGLWindow to the layout, spanning 2 rows and 2 columns
     layout->addWidget(openglWindow, 0, 0, 2, 2);
@@ -569,7 +682,7 @@ int main(int argc, char* argv[]) {
 
     // Add the QListWidget to the layout in the top right corner
     layout->addWidget(openglWindow->listWidget, 0, 1, 1, 1);
-    openglWindow->listWidget->setFixedSize(600, 70);  // Adjust the width and height as needed
+    openglWindow->listWidget->setFixedSize(620, 70);  // Adjust the width and height as needed
     // Check if the signal is being emitted
     QObject::connect(openglWindow->listWidget, &QListWidget::currentItemChanged, openglWindow, &MyOpenGLWindow::changeFocus);
 
@@ -578,25 +691,20 @@ int main(int argc, char* argv[]) {
     layout->addWidget(cameraLabel, 0, 0, 1, 1);
     cameraLabel->setAlignment(Qt::AlignTop | Qt::AlignLeft);
 
-    // Connect the QSlider's valueChanged signal to a slot in MyOpenGLWindow
-    // You'll need to add a slot named adjustTimeScale to MyOpenGLWindow for this to work
-    QObject::connect(timeSlider, &QSlider::valueChanged, openglWindow, &MyOpenGLWindow::adjustTimeScale);
-
+    QObject::connect(timeSlider, &QSlider::valueChanged, [openglWindow](int value) {
+        float floatValue = static_cast<float>(value);
+        openglWindow->adjustTimeScale(floatValue);
+    });
     // Show the main window
     window.show();
-
-    // Set up the timer as before
-    QTimer timer;
-    QObject::connect(&timer, &QTimer::timeout, openglWindow, &MyOpenGLWindow::updateUniverse);
-    timer.start(16);  // 60 frames per second
 
     // Set up a timer to update the camera coordinates label every 200 milliseconds
     QTimer cameraTimer;
     QObject::connect(&cameraTimer, &QTimer::timeout, [&openglWindow, &cameraLabel]() {
         QString cameraText = QString("Camera Position: (%1, %2, %3)")
-                                 .arg(openglWindow->cameraX)
-                                 .arg(openglWindow->cameraY)
-                                 .arg(openglWindow->cameraZ);
+                                 .arg(openglWindow->cameraPos.x() )
+                                 .arg(openglWindow->cameraPos.y() )
+                                 .arg(openglWindow->cameraPos.z() );
         cameraLabel->setText(cameraText);
     });
     cameraTimer.start(200);  // Update every 200 milliseconds
